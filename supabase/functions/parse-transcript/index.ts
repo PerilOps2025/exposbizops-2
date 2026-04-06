@@ -184,7 +184,7 @@ serve(async (req) => {
       const row = {
         inbox_id: inboxId,
         user_id: userId,
-        master_log_ref: masterLogId,
+        master_log_ref: masterLogId && masterLogId !== "test-manual" ? masterLogId : null,
         type: item.type || "Task",
         raw_fragment: item.raw_fragment || null,
         parsed_text: item.text || "",
