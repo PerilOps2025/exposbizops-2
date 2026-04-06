@@ -51,7 +51,7 @@ export default function PulseView() {
             <h4 className="text-sm font-semibold text-destructive">Overdue ({overdueTasks.length})</h4>
           </div>
           <div className="space-y-2">
-            {overdueTasks.map(t => <TaskCard key={t.id} task={t} showOverdue />)}
+            {overdueTasks.map(t => <TaskCard key={t.id} task={t} showOverdue onTaskCompleted={fetchTasks} />)}
           </div>
         </div>
       )}
