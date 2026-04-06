@@ -81,7 +81,7 @@ export default function PulseView() {
         <div>
           <h4 className="text-sm font-semibold mb-3">Active Tasks ({otherTasks.length})</h4>
           <div className="space-y-2">
-            {otherTasks.map(t => <TaskCard key={t.id} task={t} />)}
+            {otherTasks.map(t => <TaskCard key={t.id} task={t} onTaskCompleted={fetchTasks} />)}
           </div>
         </div>
       )}
