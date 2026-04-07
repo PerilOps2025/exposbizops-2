@@ -18,6 +18,7 @@ interface CalendarEvent {
   attendees: { email: string; name: string; responseStatus: string }[];
   location: string | null;
   htmlLink: string;
+  meetLink: string | null;
 }
 
 interface MeetingBrief {

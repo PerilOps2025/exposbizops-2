@@ -121,6 +121,7 @@ serve(async (req) => {
       })),
       location: e.location || null,
       htmlLink: e.htmlLink,
+      meetLink: e.hangoutLink || e.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri || null,
     }));
 
     return new Response(JSON.stringify({
