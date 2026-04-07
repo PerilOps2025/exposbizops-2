@@ -303,6 +303,32 @@ export default function PendingRoom() {
                   </div>
                 </div>
 
+                {/* Email field for CalendarEvent */}
+                {getItemValue(item, 'type') === 'CalendarEvent' && (
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium">Attendee Emails</label>
+                    <Input
+                      value={(getItemValue(item, 'email') as string[])?.join(', ') || ''}
+                      onChange={e => updateField(item.id, 'email', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                      placeholder="Comma separated emails"
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+
+                {/* Calendar Event Title */}
+                {getItemValue(item, 'type') === 'CalendarEvent' && (
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium">Event Title</label>
+                    <Input
+                      value={(getItemValue(item, 'calendar_event_title') as string) || ''}
+                      onChange={e => updateField(item.id, 'calendar_event_title', e.target.value)}
+                      placeholder="Calendar event title"
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <Switch
