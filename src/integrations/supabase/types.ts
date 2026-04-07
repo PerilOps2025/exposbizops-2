@@ -292,6 +292,7 @@ export type Database = {
           due_date: string | null
           due_is_vague: boolean | null
           due_time: string | null
+          email: string[] | null
           feedback_detail: string | null
           gemini_feedback: string | null
           id: string
@@ -319,6 +320,7 @@ export type Database = {
           due_date?: string | null
           due_is_vague?: boolean | null
           due_time?: string | null
+          email?: string[] | null
           feedback_detail?: string | null
           gemini_feedback?: string | null
           id?: string
@@ -346,6 +348,7 @@ export type Database = {
           due_date?: string | null
           due_is_vague?: boolean | null
           due_time?: string | null
+          email?: string[] | null
           feedback_detail?: string | null
           gemini_feedback?: string | null
           id?: string
