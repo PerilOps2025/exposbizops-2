@@ -103,6 +103,7 @@ export default function MeetingTab() {
     }
   };
 
+  const loadBrief = async (event: CalendarEvent) => {
     if (briefs[event.id]) return;
     setBriefLoading(prev => ({ ...prev, [event.id]: true }));
 
