@@ -139,9 +139,11 @@ serve(async (req) => {
       eventBody.end = { dateTime: `${eDate}T${eTime}:00`, timeZone };
     }
 
-    const calRes = await fetch(
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all",
-      {
+    const calUrl = wantMeet
+      ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all"
+      : "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all";
+
+    const calRes = await fetch(calUrl, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
