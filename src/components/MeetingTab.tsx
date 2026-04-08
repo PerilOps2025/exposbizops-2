@@ -89,7 +89,20 @@ export default function MeetingTab() {
     }
   };
 
-  const loadBrief = async (event: CalendarEvent) => {
+  const disconnectCalendar = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from("calendar_tokens").delete().eq("user_id", user.id);
+      setConnected(false);
+      setEvents([]);
+      setCalendarEmail(null);
+      toast.success("Calendar disconnected. Reconnect to authorize new permissions.");
+    } catch (err: any) {
+      toast.error("Failed to disconnect: " + err.message);
+    }
+  };
+
     if (briefs[event.id]) return;
     setBriefLoading(prev => ({ ...prev, [event.id]: true }));
 
