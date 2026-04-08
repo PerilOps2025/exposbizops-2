@@ -200,10 +200,15 @@ export default function MeetingTab() {
             <p className="text-sm text-muted-foreground">Synced with {calendarEmail}</p>
           )}
         </div>
-        {connected ? (
-          <Button variant="outline" size="sm" onClick={fetchEvents} className="gap-1">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </Button>
+      {connected ? (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={fetchEvents} className="gap-1">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </Button>
+            <Button variant="ghost" size="sm" onClick={disconnectCalendar} className="gap-1 text-destructive hover:text-destructive">
+              Disconnect
+            </Button>
+          </div>
         ) : null}
       </div>
 
