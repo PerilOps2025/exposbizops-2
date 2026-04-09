@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video } from "lucide-react";
+import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isToday, isTomorrow, parseISO, differenceInMinutes } from "date-fns";
+import { format, isToday, isTomorrow, isPast, parseISO, differenceInMinutes } from "date-fns";
 import { getPriorityEmoji } from "@/lib/supabase-helpers";
+import PostMeetingModal from "@/components/PostMeetingModal";
 
 interface CalendarEvent {
   id: string;
@@ -36,6 +37,7 @@ export default function MeetingTab() {
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [briefs, setBriefs] = useState<Record<string, MeetingBrief>>({});
   const [briefLoading, setBriefLoading] = useState<Record<string, boolean>>({});
+  const [postMeetingEvent, setPostMeetingEvent] = useState<CalendarEvent | null>(null);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -388,9 +390,9 @@ export default function MeetingTab() {
                                 <p className="text-sm text-muted-foreground text-center py-2">No related context found for this meeting.</p>
                               )}
 
-                              {event.htmlLink && (
-                                <>
-                                  <Separator />
+                              <Separator />
+                              <div className="flex items-center gap-3">
+                                {event.htmlLink && (
                                   <a
                                     href={event.htmlLink}
                                     target="_blank"
@@ -399,8 +401,18 @@ export default function MeetingTab() {
                                   >
                                     <ExternalLink className="w-3 h-3" /> Open in Google Calendar
                                   </a>
-                                </>
-                              )}
+                                )}
+                                {isPast(parseISO(event.end)) && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1 h-7 text-xs"
+                                    onClick={(e) => { e.stopPropagation(); setPostMeetingEvent(event); }}
+                                  >
+                                    <MessageSquare className="w-3 h-3" /> Post-Meeting Notes
+                                  </Button>
+                                )}
+                              </div>
                             </>
                           ) : null}
                         </div>
@@ -413,6 +425,15 @@ export default function MeetingTab() {
           ))}
         </div>
       )}
+
+      <PostMeetingModal
+        open={!!postMeetingEvent}
+        onClose={() => setPostMeetingEvent(null)}
+        meetingTitle={postMeetingEvent?.title || ""}
+        meetingId={postMeetingEvent?.id}
+        attendees={postMeetingEvent?.attendees?.map(a => a.name || a.email) || []}
+        onSaved={fetchEvents}
+      />
     </div>
   );
 }

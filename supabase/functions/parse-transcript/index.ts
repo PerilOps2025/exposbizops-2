@@ -158,6 +158,27 @@ serve(async (req) => {
 
     const aiResult = await response.json();
     const content = aiResult.choices?.[0]?.message?.content || "{}";
+    const tokensUsed = aiResult.usage?.total_tokens || 0;
+
+    // Track AI usage
+    const todayKey = new Date().toISOString().split("T")[0];
+    const { data: usageData } = await supabase
+      .from("config")
+      .select("value")
+      .eq("user_id", userId)
+      .eq("key", "AI_USAGE")
+      .single();
+
+    const usage = (usageData?.value as any) || {};
+    const todayUsage = usage[todayKey] || { calls: 0, tokens: 0 };
+    todayUsage.calls += 1;
+    todayUsage.tokens += tokensUsed;
+    usage[todayKey] = todayUsage;
+
+    await supabase.from("config").upsert(
+      { user_id: userId, key: "AI_USAGE", value: usage },
+      { onConflict: "user_id,key" }
+    );
 
     // Parse JSON from AI response
     let parsed;

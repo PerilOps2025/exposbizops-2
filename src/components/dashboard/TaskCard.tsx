@@ -24,7 +24,7 @@ export default function TaskCard({ task, showOverdue, onTaskCompleted }: TaskCar
           <span className="text-base mt-0.5">{getPriorityEmoji(task.priority)}</span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium truncate">{task.task}</p>
+              <p className="text-sm font-medium break-words">{task.task}</p>
               {task.status === 'Blocked' && (
                 <Lock className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
               )}
