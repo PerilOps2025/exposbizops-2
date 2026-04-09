@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import DataRetentionCard from "@/components/dashboard/DataRetentionCard";
@@ -16,6 +17,10 @@ export default function ConfigTab() {
   const [newProject, setNewProject] = useState("");
   const [briefWindow, setBriefWindow] = useState("60");
   const [escalationDays, setEscalationDays] = useState("3");
+  const [digestEmail, setDigestEmail] = useState("");
+  const [dailyPaused, setDailyPaused] = useState(false);
+  const [weeklyPaused, setWeeklyPaused] = useState(false);
+  const [breakfastPaused, setBreakfastPaused] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -32,6 +37,10 @@ export default function ConfigTab() {
     if (configMap.ENTITY_PROJECTS) setProjects(configMap.ENTITY_PROJECTS);
     if (configMap.BRIEF_WINDOW_MINUTES) setBriefWindow(String(configMap.BRIEF_WINDOW_MINUTES));
     if (configMap.ESCALATION_THRESHOLD_DAYS) setEscalationDays(String(configMap.ESCALATION_THRESHOLD_DAYS));
+    if (configMap.DIGEST_EMAIL) setDigestEmail(String(configMap.DIGEST_EMAIL));
+    if (configMap.DIGEST_DAILY_PAUSED !== undefined) setDailyPaused(!!configMap.DIGEST_DAILY_PAUSED);
+    if (configMap.DIGEST_WEEKLY_PAUSED !== undefined) setWeeklyPaused(!!configMap.DIGEST_WEEKLY_PAUSED);
+    if (configMap.DIGEST_BREAKFAST_PAUSED !== undefined) setBreakfastPaused(!!configMap.DIGEST_BREAKFAST_PAUSED);
   };
 
   const saveConfig = async (key: string, value: any) => {
