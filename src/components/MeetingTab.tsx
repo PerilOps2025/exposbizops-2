@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video } from "lucide-react";
+import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isToday, isTomorrow, parseISO, differenceInMinutes } from "date-fns";
+import { format, isToday, isTomorrow, isPast, parseISO, differenceInMinutes } from "date-fns";
 import { getPriorityEmoji } from "@/lib/supabase-helpers";
+import PostMeetingModal from "@/components/PostMeetingModal";
 
 interface CalendarEvent {
   id: string;
