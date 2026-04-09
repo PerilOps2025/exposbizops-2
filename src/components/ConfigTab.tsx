@@ -145,6 +145,66 @@ export default function ConfigTab() {
           <Button size="sm" onClick={addProject}>Add</Button>
         </div>
       </Card>
+      {/* Email Digests */}
+      <Card className="p-4 space-y-4">
+        <h3 className="text-sm font-semibold">Email Digests</h3>
+        <div>
+          <label className="text-xs text-muted-foreground">Send digests to</label>
+          <div className="flex gap-2 mt-1">
+            <Input
+              value={digestEmail}
+              onChange={e => setDigestEmail(e.target.value)}
+              placeholder="your@email.com"
+              type="email"
+            />
+            <Button size="sm" onClick={() => saveConfig('DIGEST_EMAIL', digestEmail)}>Save</Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Emails are sent from your connected Google account. Requires Google Calendar + Gmail to be connected.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+            <div>
+              <p className="text-sm font-medium">☀️ Breakfast Brief</p>
+              <p className="text-xs text-muted-foreground">Daily at 9:00 AM IST (except Sunday)</p>
+            </div>
+            <Switch
+              checked={!breakfastPaused}
+              onCheckedChange={v => {
+                setBreakfastPaused(!v);
+                saveConfig('DIGEST_BREAKFAST_PAUSED', !v);
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+            <div>
+              <p className="text-sm font-medium">🌙 Daily Digest</p>
+              <p className="text-xs text-muted-foreground">Daily at 9:00 PM IST (except Sunday) — Karma & Consequences</p>
+            </div>
+            <Switch
+              checked={!dailyPaused}
+              onCheckedChange={v => {
+                setDailyPaused(!v);
+                saveConfig('DIGEST_DAILY_PAUSED', !v);
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+            <div>
+              <p className="text-sm font-medium">📊 Weekly Digest</p>
+              <p className="text-xs text-muted-foreground">Every Saturday at 9:00 PM IST</p>
+            </div>
+            <Switch
+              checked={!weeklyPaused}
+              onCheckedChange={v => {
+                setWeeklyPaused(!v);
+                saveConfig('DIGEST_WEEKLY_PAUSED', !v);
+              }}
+            />
+          </div>
+        </div>
+      </Card>
       {/* Data Retention */}
       <DataRetentionCard />
     </div>
