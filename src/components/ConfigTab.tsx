@@ -21,6 +21,7 @@ export default function ConfigTab() {
   const [dailyPaused, setDailyPaused] = useState(false);
   const [weeklyPaused, setWeeklyPaused] = useState(false);
   const [breakfastPaused, setBreakfastPaused] = useState(false);
+  const [aiUsage, setAiUsage] = useState<Record<string, { calls: number; tokens: number }>>({});
 
   useEffect(() => {
     loadConfig();
