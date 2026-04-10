@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, Calendar, CheckCircle, ListTodo, ArrowRight, Video } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Calendar, CheckCircle, ListTodo, ArrowRight, Video, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,22 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
   const [context, setContext] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [saving, setSaving] = useState(false);
+  // Meeting linking
+  const [linkedMeetingId, setLinkedMeetingId] = useState("");
+  const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (open) loadUpcomingMeetings();
+  }, [open]);
+
+  const loadUpcomingMeetings = async () => {
+    const { data } = await supabase
+      .from("meeting_log")
+      .select("meeting_id, meeting_title, scheduled_start")
+      .order("scheduled_start", { ascending: true })
+      .limit(20);
+    setUpcomingMeetings(data || []);
+  };
 
   if (!open) return null;
 
@@ -47,7 +63,7 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
     setText(""); setPerson(""); setTeam(parentTask?.team || ""); setProjectTag(parentTask?.project_tag || "");
     setPriority("Med"); setDueDate(""); setDueTime(""); setIsMeetingContext(false);
     setEndDate(""); setEndTime(""); setAttendeeEmails(""); setEventTitle("");
-    setAddMeetLink(true); setIsAllDay(false); setContext(""); setValidUntil("");
+    setAddMeetLink(true); setIsAllDay(false); setContext(""); setValidUntil(""); setLinkedMeetingId("");
   };
 
   const handleSave = async (toPending: boolean) => {
@@ -133,7 +149,8 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
             due_date: dueDate || null, due_time: isAllDay ? null : dueTime || null,
             is_meeting_context: true, calendar_event_id: calendarEventId,
             parent_task_id: parentTask?.task_id || null, status: "Active",
-          });
+            linked_meeting_id: linkedMeetingId || null,
+          } as any);
           if (error) throw error;
         }
       } else {
@@ -146,7 +163,8 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
             project_tag: projectTag || null, priority,
             due_date: dueDate || null, due_time: dueTime || null,
             is_meeting_context: isMeetingContext, status: "Pending",
-          });
+            linked_meeting_id: linkedMeetingId || null,
+          } as any);
           if (error) throw error;
           toast.success("Saved to Pending Room");
         } else {
@@ -157,7 +175,8 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
             priority, due_date: dueDate || null, due_time: dueTime || null,
             is_meeting_context: isMeetingContext,
             parent_task_id: parentTask?.task_id || null, status: "Active",
-          });
+            linked_meeting_id: linkedMeetingId || null,
+          } as any);
           if (error) throw error;
           toast.success(type === "FollowUp" ? "Follow-up created" : "Task created");
         }
@@ -401,6 +420,29 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+
+          {/* Meeting linking - for Task, FollowUp, Event */}
+          {type !== "Decision" && upcomingMeetings.length > 0 && (
+            <div>
+              <label className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                <Link2 className="w-3 h-3" /> Link to Meeting (optional)
+              </label>
+              <Select value={linkedMeetingId} onValueChange={setLinkedMeetingId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="No meeting linked" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No meeting linked</SelectItem>
+                  {upcomingMeetings.map(m => (
+                    <SelectItem key={m.meeting_id} value={m.meeting_id}>
+                      {m.meeting_title || m.meeting_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>
