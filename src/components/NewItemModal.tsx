@@ -177,7 +177,6 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
             parent_task_id: parentTask?.task_id || null, status: "Active",
             linked_meeting_id: linkedMeetingId || null,
           } as any);
-          });
           if (error) throw error;
           toast.success(type === "FollowUp" ? "Follow-up created" : "Task created");
         }
