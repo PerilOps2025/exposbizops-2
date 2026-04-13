@@ -425,22 +425,25 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
 
 
           {/* Meeting linking - for Task, FollowUp, Event */}
-          {type !== "Decision" && upcomingMeetings.length > 0 && (
+          {type !== "Decision" && (
             <div>
               <label className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                 <Link2 className="w-3 h-3" /> Link to Meeting (optional)
               </label>
-              <Select value={linkedMeetingId} onValueChange={setLinkedMeetingId}>
+              <Select value={linkedMeetingId} onValueChange={v => setLinkedMeetingId(v === "" ? "" : v)}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="No meeting linked" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No meeting linked</SelectItem>
+                  <SelectItem value="">No meeting linked</SelectItem>
                   {upcomingMeetings.map(m => (
                     <SelectItem key={m.meeting_id} value={m.meeting_id}>
                       {m.meeting_title || m.meeting_id}
                     </SelectItem>
                   ))}
+                  {upcomingMeetings.length === 0 && (
+                    <div className="py-2 px-3 text-xs text-muted-foreground">No meetings in log yet</div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
