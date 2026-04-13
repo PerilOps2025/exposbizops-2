@@ -110,56 +110,82 @@ export default function MeetingTab() {
     setBriefLoading(prev => ({ ...prev, [event.id]: true }));
 
     try {
-      const attendeeNames = event.attendees.map(a => a.name?.split("@")[0] || a.email.split("@")[0]);
-      const keywords = event.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      // Build match sets from the calendar event
+      // 1. Attendee emails (lowercased)
+      const attendeeEmails = event.attendees.map(a => a.email.toLowerCase());
+      // 2. Attendee first-name / display-name tokens
+      const attendeeNames = event.attendees.map(a =>
+        (a.name || a.email.split("@")[0]).toLowerCase()
+      );
+      // 3. Meaningful words from the meeting title (length > 3, skip stop-words)
+      const stopWords = new Set(["with", "this", "that", "from", "have", "will", "been", "your", "their", "about", "meeting", "call", "sync", "chat", "discussion", "review"]);
+      const titleKeywords = event.title
+        .toLowerCase()
+        .split(/[\s\-_/]+/)
+        .filter(w => w.length > 3 && !stopWords.has(w));
 
+      // Helper: does a task/decision person array match an attendee?
+      const personMatchesAttendee = (personArr: string[] | null) =>
+        (personArr || []).some(p => {
+          const pl = p.toLowerCase();
+          return (
+            attendeeEmails.some(e => pl.includes(e) || e.includes(pl)) ||
+            attendeeNames.some(n => pl.includes(n) || n.includes(pl))
+          );
+        });
+
+      // Helper: does a task/decision project_tag or team match a title keyword?
+      const projectOrTeamMatchesTitle = (project_tag: string | null, team: string | null) => {
+        const fields = [project_tag, team].filter(Boolean).map(f => f!.toLowerCase());
+        return titleKeywords.some(k => fields.some(f => f.includes(k) || k.includes(f)));
+      };
+
+      // Fetch active tasks and filter strictly — no is_meeting_context fallback
       const { data: tasks } = await supabase
         .from("active_tasks")
         .select("*")
         .in("status", ["Active", "WaitingOn", "Blocked", "Overdue"]);
 
       const relatedTasks = (tasks || []).filter(t => {
-        const matchPerson = t.person?.some((p: string) =>
-          attendeeNames.some(a => p.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.toLowerCase()))
-        );
-        const matchKeyword = keywords.some(k =>
-          t.task?.toLowerCase().includes(k) ||
-          t.project_tag?.toLowerCase().includes(k) ||
-          t.team?.toLowerCase().includes(k)
-        );
-        return matchPerson || matchKeyword || t.is_meeting_context;
+        // Must match at least one of: attendee person, project/team keyword
+        return personMatchesAttendee(t.person) || projectOrTeamMatchesTitle(t.project_tag, t.team);
       });
 
+      // Fetch recent decisions and filter the same way
       const { data: decisions } = await supabase
         .from("decisions")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
 
       const relatedDecisions = (decisions || []).filter(d => {
-        const matchPerson = d.person?.some((p: string) =>
-          attendeeNames.some(a => p.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.toLowerCase()))
-        );
-        const matchKeyword = keywords.some(k =>
-          d.decision_text?.toLowerCase().includes(k) ||
-          d.project_tag?.toLowerCase().includes(k) ||
-          d.team?.toLowerCase().includes(k)
-        );
-        return matchPerson || matchKeyword;
+        return personMatchesAttendee(d.person) || projectOrTeamMatchesTitle(d.project_tag, d.team);
       }).slice(0, 5);
 
+      // Find past meetings whose title keywords or projects overlap
       const { data: pastMeetings } = await supabase
         .from("meeting_log")
         .select("*")
         .order("scheduled_start", { ascending: false })
-        .limit(20);
+        .limit(30);
 
       const relatedMeetings = (pastMeetings || []).filter(m => {
-        const titleWords = (m.meeting_title || "").toLowerCase().split(/\s+/);
-        return keywords.some(k => titleWords.includes(k));
+        // Match by title keyword overlap
+        const pastTitleWords = (m.meeting_title || "")
+          .toLowerCase()
+          .split(/[\s\-_/]+/)
+          .filter((w: string) => w.length > 3 && !stopWords.has(w));
+        const titleOverlap = titleKeywords.some(k => pastTitleWords.includes(k));
+
+        // Match by project tag overlap (meeting_log.projects array)
+        const projectOverlap = (m.projects || []).some((proj: string) =>
+          titleKeywords.some(k => proj.toLowerCase().includes(k) || k.includes(proj.toLowerCase()))
+        );
+
+        return titleOverlap || projectOverlap;
       }).slice(0, 3);
 
-      const carryForwardItems = relatedMeetings.flatMap(m => m.open_items_carried_forward || []);
+      const carryForwardItems = relatedMeetings.flatMap((m: any) => m.open_items_carried_forward || []);
 
       setBriefs(prev => ({
         ...prev,
