@@ -430,12 +430,12 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
               <label className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                 <Link2 className="w-3 h-3" /> Link to Meeting (optional)
               </label>
-              <Select value={linkedMeetingId} onValueChange={v => setLinkedMeetingId(v === "" ? "" : v)}>
+              <Select value={linkedMeetingId || "__none__"} onValueChange={v => setLinkedMeetingId(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="No meeting linked" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No meeting linked</SelectItem>
+                  <SelectItem value="__none__">No meeting linked</SelectItem>
                   {upcomingMeetings.map(m => (
                     <SelectItem key={m.meeting_id} value={m.meeting_id}>
                       {m.meeting_title || m.meeting_id}
