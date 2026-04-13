@@ -6,10 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function refreshTokenIfNeeded(
-  supabase: any,
-  tokenRow: any
-): Promise<string> {
+async function refreshTokenIfNeeded(supabase: any, tokenRow: any): Promise<string> {
   if (new Date(tokenRow.expires_at) > new Date(Date.now() + 60_000)) {
     return tokenRow.access_token;
   }
@@ -32,7 +29,6 @@ async function refreshTokenIfNeeded(
   if (!res.ok) throw new Error("Token refresh failed: " + JSON.stringify(data));
 
   const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000).toISOString();
-
   await supabase.from("calendar_tokens").update({
     access_token: data.access_token,
     expires_at: expiresAt,
@@ -67,7 +63,19 @@ serve(async (req) => {
       });
     }
 
-    // Get stored tokens
+    // Parse optional query params from body
+    let days = 7; // default for MeetingTab
+    if (req.method === "POST" || req.headers.get("content-type")?.includes("application/json")) {
+      try {
+        const body = await req.json();
+        if (body?.days) days = Math.min(Number(body.days) || 7, 60);
+      } catch { /* no body is fine */ }
+    } else {
+      const url = new URL(req.url);
+      const d = url.searchParams.get("days");
+      if (d) days = Math.min(Number(d) || 7, 60);
+    }
+
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
       .select("*")
@@ -84,16 +92,15 @@ serve(async (req) => {
 
     const accessToken = await refreshTokenIfNeeded(supabase, tokenRow);
 
-    // Fetch upcoming events (next 7 days)
     const now = new Date();
-    const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
     const calParams = new URLSearchParams({
       timeMin: now.toISOString(),
-      timeMax: weekLater.toISOString(),
+      timeMax: later.toISOString(),
       singleEvents: "true",
       orderBy: "startTime",
-      maxResults: "50",
+      maxResults: "100",
       conferenceDataVersion: "1",
     });
 
