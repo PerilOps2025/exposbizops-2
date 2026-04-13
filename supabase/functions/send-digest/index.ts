@@ -100,10 +100,13 @@ serve(async (req) => {
         }
       }
 
+      // Encode subject using RFC 2047 (Base64) so emojis/Unicode render correctly
+      const subjectEncoded = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(genData.subject)))}?=`;
+
       // Send email via Gmail API
       const emailContent = [
         `To: ${digestEmail}`,
-        `Subject: ${genData.subject}`,
+        `Subject: ${subjectEncoded}`,
         `MIME-Version: 1.0`,
         `Content-Type: text/html; charset=utf-8`,
         ``,
