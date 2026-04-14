@@ -58,18 +58,6 @@ serve(async (req) => {
       });
     }
 
-    // Read days from body — supabase.functions.invoke sends a clean JSON body
-    let days = 7;
-    try {
-      const text = await req.text();
-      if (text && text !== "{}") {
-        const parsed = JSON.parse(text);
-        if (parsed?.days) days = Math.min(Math.max(Number(parsed.days) || 7, 1), 60);
-      }
-    } catch { /* default to 7 */ }
-
-    console.log("Fetching calendar, days:", days);
-
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
       .select("*")
@@ -87,16 +75,14 @@ serve(async (req) => {
     const accessToken = await refreshTokenIfNeeded(supabase, tokenRow);
 
     const now = new Date();
-    const later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-
-    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString());
+    const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const calParams = new URLSearchParams({
       timeMin: now.toISOString(),
-      timeMax: later.toISOString(),
+      timeMax: weekLater.toISOString(),
       singleEvents: "true",
       orderBy: "startTime",
-      maxResults: "100",
+      maxResults: "50",
       conferenceDataVersion: "1",
     });
 
@@ -112,8 +98,6 @@ serve(async (req) => {
     }
 
     const calData = await calRes.json();
-    console.log("Events returned:", calData.items?.length ?? 0, "for days:", days);
-
     const events = (calData.items || []).map((e: any) => ({
       id: e.id,
       title: e.summary || "No Title",
