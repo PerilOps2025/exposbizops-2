@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video, MessageSquare, ChevronsDown } from "lucide-react";
+import { Calendar, Clock, Users, FileText, CheckCircle, Link2, ExternalLink, RefreshCw, ChevronDown, ChevronUp, Video, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isToday, isTomorrow, isPast, parseISO, differenceInMinutes, addDays, startOfDay } from "date-fns";
+import { format, isToday, isTomorrow, isPast, parseISO, differenceInMinutes } from "date-fns";
 import { getPriorityEmoji } from "@/lib/supabase-helpers";
 import PostMeetingModal from "@/components/PostMeetingModal";
 
@@ -34,49 +34,36 @@ export default function MeetingTab() {
   const [calendarEmail, setCalendarEmail] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [briefs, setBriefs] = useState<Record<string, MeetingBrief>>({});
   const [briefLoading, setBriefLoading] = useState<Record<string, boolean>>({});
   const [postMeetingEvent, setPostMeetingEvent] = useState<CalendarEvent | null>(null);
-  // Show-more state: whether we've loaded & shown the 8-30 day window
-  const [showingMore, setShowingMore] = useState(false);
-  // Which beyond-7-day date groups are expanded
-  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(new Set());
 
-  const fetchEvents = useCallback(async (days = 7) => {
-    if (days === 7) setLoading(true); else setLoadingMore(true);
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      // supabase.functions.invoke handles CORS correctly for all cases
       const res = await supabase.functions.invoke("google-calendar-events", {
         headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { days },
       });
+
       if (res.error) throw res.error;
-      body = res.data;
+      const body = res.data;
 
       setConnected(body.connected);
       setCalendarEmail(body.email || null);
       if (body.events) setEvents(body.events);
     } catch (err: any) {
       console.error("Failed to fetch calendar:", err);
-      if (days === 7) setConnected(false);
-      else toast.error("Failed to load extended calendar: " + err.message);
+      setConnected(false);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   }, []);
 
-  useEffect(() => { fetchEvents(7); }, [fetchEvents]);
-
-  const handleShowMore = async () => {
-    setShowingMore(true);
-    await fetchEvents(30);
-  };
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
   const connectCalendar = async () => {
     try {
@@ -95,7 +82,7 @@ export default function MeetingTab() {
         if (popup?.closed) {
           clearInterval(interval);
           toast.success("Checking calendar connection...");
-          setTimeout(() => fetchEvents(7), 2000);
+          setTimeout(fetchEvents, 2000);
         }
       }, 500);
     } catch (err: any) {
@@ -146,7 +133,6 @@ export default function MeetingTab() {
         return titleKeywords.some(k => fields.some(f => f.includes(k) || k.includes(f)));
       };
 
-      // Also match tasks that have linked_meeting_id === this event's GCal id
       const { data: tasks } = await supabase
         .from("active_tasks")
         .select("*")
@@ -216,9 +202,6 @@ export default function MeetingTab() {
   };
 
   const getDateLabel = (dateStr: string) => {
-    // All-day events have date-only strings like "2026-04-23" (no time/timezone).
-    // parseISO treats them as UTC midnight which shifts the day in IST (+5:30).
-    // Parse them manually as local dates to avoid the off-by-one.
     let d: Date;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       const [y, m, day] = dateStr.split("-").map(Number);
@@ -231,206 +214,16 @@ export default function MeetingTab() {
     return format(d, "EEEE, MMM d");
   };
 
-  // Split events: within 7 days vs beyond
-  const cutoff7 = addDays(startOfDay(new Date()), 8); // include full day 7
-  const first7Events = events.filter(e => parseISO(e.start) < cutoff7);
-  const beyondEvents = events.filter(e => parseISO(e.start) >= cutoff7);
-
-  // Group by date label
-  const groupEvents = (evs: CalendarEvent[]) => {
-    const grouped: Record<string, CalendarEvent[]> = {};
-    evs.forEach(e => {
-      const key = getDateLabel(e.start);
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(e);
-    });
-    return grouped;
-  };
-
-  const grouped7 = groupEvents(first7Events);
-  const groupedBeyond = groupEvents(beyondEvents);
-
-  const toggleDateGroup = (label: string) => {
-    setExpandedDateGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label); else next.add(label);
-      return next;
-    });
-  };
+  const groupedEvents: Record<string, CalendarEvent[]> = {};
+  events.forEach(e => {
+    const key = getDateLabel(e.start);
+    if (!groupedEvents[key]) groupedEvents[key] = [];
+    groupedEvents[key].push(e);
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
   }
-
-  const EventCard = ({ event }: { event: CalendarEvent }) => {
-    const isExpanded = expandedEvent === event.id;
-    const brief = briefs[event.id];
-    const isLoadingBrief = briefLoading[event.id];
-
-    return (
-      <Card key={event.id} className="overflow-hidden">
-        <button
-          onClick={() => toggleEvent(event)}
-          className="w-full p-4 text-left hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm truncate">{event.title}</p>
-              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatEventTime(event.start, event.end)}
-                </span>
-                {event.attendees.length > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {event.attendees.length}
-                  </span>
-                )}
-              </div>
-              {event.meetLink && (
-                <a
-                  href={event.meetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 mt-1 text-xs font-medium text-primary hover:underline"
-                >
-                  <Video className="w-3 h-3" /> Join Meet
-                </a>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {brief && (brief.relatedTasks.length > 0 || brief.relatedDecisions.length > 0) && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {brief.relatedTasks.length + brief.relatedDecisions.length} items
-                </Badge>
-              )}
-              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </div>
-          </div>
-        </button>
-
-        {isExpanded && (
-          <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
-            {isLoadingBrief ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Loading brief...</p>
-            ) : brief ? (
-              <>
-                {event.attendees.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Attendees</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {event.attendees.map((a, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">{a.name || a.email}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {brief.relatedTasks.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                      Open Tasks ({brief.relatedTasks.length})
-                    </h4>
-                    <div className="space-y-1.5">
-                      {brief.relatedTasks.map(t => (
-                        <div key={t.id} className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded">
-                          <span>{getPriorityEmoji(t.priority)}</span>
-                          <span className="truncate flex-1">{t.task}</span>
-                          {t.linked_meeting_id === event.id && (
-                            <Badge variant="secondary" className="text-[10px] h-4 gap-0.5">
-                              <Link2 className="w-2 h-2" /> linked
-                            </Badge>
-                          )}
-                          {t.person?.length > 0 && (
-                            <span className="text-xs text-muted-foreground">{t.person.join(", ")}</span>
-                          )}
-                          <Badge variant="secondary" className="text-[10px] h-5">{t.status}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {brief.relatedDecisions.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                      Recent Decisions ({brief.relatedDecisions.length})
-                    </h4>
-                    <div className="space-y-1.5">
-                      {brief.relatedDecisions.map(d => (
-                        <div key={d.id} className="flex items-start gap-2 text-sm p-2 bg-muted/50 rounded">
-                          <CheckCircle className="w-3.5 h-3.5 text-success mt-0.5 flex-shrink-0" />
-                          <span className="truncate">{d.decision_text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {brief.pastMeetings.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Past Meetings</h4>
-                    <div className="space-y-1.5">
-                      {brief.pastMeetings.map(m => (
-                        <div key={m.id} className="text-sm p-2 bg-muted/50 rounded">
-                          <p className="font-medium">{m.meeting_title || "Untitled"}</p>
-                          {m.auto_summary && <p className="text-xs text-muted-foreground mt-1">{m.auto_summary}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {brief.carryForwardItems.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Carried Forward</h4>
-                    <ul className="space-y-1 text-sm">
-                      {brief.carryForwardItems.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2 p-2 bg-warning/10 rounded">
-                          <FileText className="w-3.5 h-3.5 text-warning mt-0.5 flex-shrink-0" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {brief.relatedTasks.length === 0 && brief.relatedDecisions.length === 0 && brief.pastMeetings.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-2">No related context found for this meeting.</p>
-                )}
-
-                <Separator />
-                <div className="flex items-center gap-3">
-                  {event.htmlLink && (
-                    <a
-                      href={event.htmlLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-primary hover:underline"
-                    >
-                      <ExternalLink className="w-3 h-3" /> Open in Google Calendar
-                    </a>
-                  )}
-                  {isPast(parseISO(event.end)) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1 h-7 text-xs"
-                      onClick={e => { e.stopPropagation(); setPostMeetingEvent(event); }}
-                    >
-                      <MessageSquare className="w-3 h-3" /> Post-Meeting Notes
-                    </Button>
-                  )}
-                </div>
-              </>
-            ) : null}
-          </div>
-        )}
-      </Card>
-    );
-  };
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
@@ -443,7 +236,7 @@ export default function MeetingTab() {
         </div>
         {connected ? (
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => fetchEvents(showingMore ? 30 : 7)} className="gap-1">
+            <Button variant="outline" size="sm" onClick={fetchEvents} className="gap-1">
               <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </Button>
             <Button variant="ghost" size="sm" onClick={disconnectCalendar} className="gap-1 text-destructive hover:text-destructive">
@@ -471,78 +264,185 @@ export default function MeetingTab() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {/* First 7 days — always open */}
-          {Object.entries(grouped7).map(([dateLabel, dayEvents]) => (
+          {Object.entries(groupedEvents).map(([dateLabel, dayEvents]) => (
             <div key={dateLabel}>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
                 {dateLabel}
                 <span className="text-[10px] font-normal">{dayEvents.length} meeting{dayEvents.length !== 1 ? "s" : ""}</span>
               </h3>
               <div className="space-y-3">
-                {dayEvents.map(event => <EventCard key={event.id} event={event} />)}
+                {dayEvents.map(event => {
+                  const isExpanded = expandedEvent === event.id;
+                  const brief = briefs[event.id];
+                  const isLoadingBrief = briefLoading[event.id];
+
+                  return (
+                    <Card key={event.id} className="overflow-hidden">
+                      <button
+                        onClick={() => toggleEvent(event)}
+                        className="w-full p-4 text-left hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{event.title}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatEventTime(event.start, event.end)}
+                              </span>
+                              {event.attendees.length > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {event.attendees.length}
+                                </span>
+                              )}
+                            </div>
+                            {event.meetLink && (
+                              <a
+                                href={event.meetLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 mt-1 text-xs font-medium text-primary hover:underline"
+                              >
+                                <Video className="w-3 h-3" /> Join Meet
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {brief && (brief.relatedTasks.length > 0 || brief.relatedDecisions.length > 0) && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {brief.relatedTasks.length + brief.relatedDecisions.length} items
+                              </Badge>
+                            )}
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
+                          {isLoadingBrief ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">Loading brief...</p>
+                          ) : brief ? (
+                            <>
+                              {event.attendees.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Attendees</h4>
+                                  <div className="flex flex-wrap gap-1">
+                                    {event.attendees.map((a, i) => (
+                                      <Badge key={i} variant="outline" className="text-xs">{a.name || a.email}</Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {brief.relatedTasks.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                                    Open Tasks ({brief.relatedTasks.length})
+                                  </h4>
+                                  <div className="space-y-1.5">
+                                    {brief.relatedTasks.map(t => (
+                                      <div key={t.id} className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded">
+                                        <span>{getPriorityEmoji(t.priority)}</span>
+                                        <span className="truncate flex-1">{t.task}</span>
+                                        {t.linked_meeting_id === event.id && (
+                                          <Badge variant="secondary" className="text-[10px] h-4 gap-0.5">
+                                            <Link2 className="w-2 h-2" /> linked
+                                          </Badge>
+                                        )}
+                                        {t.person?.length > 0 && (
+                                          <span className="text-xs text-muted-foreground">{t.person.join(", ")}</span>
+                                        )}
+                                        <Badge variant="secondary" className="text-[10px] h-5">{t.status}</Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {brief.relatedDecisions.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                                    Recent Decisions ({brief.relatedDecisions.length})
+                                  </h4>
+                                  <div className="space-y-1.5">
+                                    {brief.relatedDecisions.map(d => (
+                                      <div key={d.id} className="flex items-start gap-2 text-sm p-2 bg-muted/50 rounded">
+                                        <CheckCircle className="w-3.5 h-3.5 text-success mt-0.5 flex-shrink-0" />
+                                        <span className="truncate">{d.decision_text}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {brief.pastMeetings.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Past Meetings</h4>
+                                  <div className="space-y-1.5">
+                                    {brief.pastMeetings.map(m => (
+                                      <div key={m.id} className="text-sm p-2 bg-muted/50 rounded">
+                                        <p className="font-medium">{m.meeting_title || "Untitled"}</p>
+                                        {m.auto_summary && <p className="text-xs text-muted-foreground mt-1">{m.auto_summary}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {brief.carryForwardItems.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Carried Forward</h4>
+                                  <ul className="space-y-1 text-sm">
+                                    {brief.carryForwardItems.map((item, i) => (
+                                      <li key={i} className="flex items-start gap-2 p-2 bg-warning/10 rounded">
+                                        <FileText className="w-3.5 h-3.5 text-warning mt-0.5 flex-shrink-0" />
+                                        <span>{item}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {brief.relatedTasks.length === 0 && brief.relatedDecisions.length === 0 && brief.pastMeetings.length === 0 && (
+                                <p className="text-sm text-muted-foreground text-center py-2">No related context found for this meeting.</p>
+                              )}
+
+                              <Separator />
+                              <div className="flex items-center gap-3">
+                                {event.htmlLink && (
+                                  <a
+                                    href={event.htmlLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="w-3 h-3" /> Open in Google Calendar
+                                  </a>
+                                )}
+                                {isPast(parseISO(event.end)) && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1 h-7 text-xs"
+                                    onClick={e => { e.stopPropagation(); setPostMeetingEvent(event); }}
+                                  >
+                                    <MessageSquare className="w-3 h-3" /> Post-Meeting Notes
+                                  </Button>
+                                )}
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           ))}
-
-          {/* Show more button (loads 30-day window) */}
-          {!showingMore && (
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleShowMore}
-              disabled={loadingMore}
-            >
-              {loadingMore
-                ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading…</>
-                : <><ChevronsDown className="w-4 h-4" /> Show next 30 days</>
-              }
-            </Button>
-          )}
-
-          {/* Beyond 7 days — collapsible per date group */}
-          {showingMore && Object.keys(groupedBeyond).length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Next 30 days</span>
-                <Separator className="flex-1" />
-              </div>
-              {Object.entries(groupedBeyond).map(([dateLabel, dayEvents]) => {
-                const isOpen = expandedDateGroups.has(dateLabel);
-                return (
-                  <div key={dateLabel} className="border border-border rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => toggleDateGroup(dateLabel)}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold">{dateLabel}</h3>
-                        <Badge variant="secondary" className="text-[10px] h-4">
-                          {dayEvents.length} meeting{dayEvents.length !== 1 ? "s" : ""}
-                        </Badge>
-                        {/* Show Meet link badges if any events have them */}
-                        {dayEvents.some(e => e.meetLink) && (
-                          <Badge variant="outline" className="text-[10px] h-4 gap-0.5">
-                            <Video className="w-2.5 h-2.5" /> Meet
-                          </Badge>
-                        )}
-                      </div>
-                      {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                    </button>
-                    {isOpen && (
-                      <div className="p-3 space-y-3">
-                        {dayEvents.map(event => <EventCard key={event.id} event={event} />)}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {showingMore && Object.keys(groupedBeyond).length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-4">No more meetings in the next 30 days.</p>
-          )}
         </div>
       )}
 
@@ -552,7 +452,7 @@ export default function MeetingTab() {
         meetingTitle={postMeetingEvent?.title || ""}
         meetingId={postMeetingEvent?.id}
         attendees={postMeetingEvent?.attendees?.map(a => a.name || a.email) || []}
-        onSaved={() => fetchEvents(showingMore ? 30 : 7)}
+        onSaved={fetchEvents}
       />
     </div>
   );
