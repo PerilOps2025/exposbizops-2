@@ -52,8 +52,12 @@ export default function MeetingTab() {
 
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events?days=${days}`;
       const fetchRes = await fetch(fnUrl, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ days }),
       });
       if (!fetchRes.ok) throw new Error(`Calendar fetch failed: ${fetchRes.status}`);
       const body = await fetchRes.json();
