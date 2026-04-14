@@ -50,25 +50,36 @@ export default function MeetingTab() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`;
-      const fetchRes = await fetch(fnUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-          "x-calendar-days": String(days),
-        },
-        body: "{}",
-      });
-      if (!fetchRes.ok) throw new Error(`Calendar fetch failed: ${fetchRes.status}`);
-      const body = await fetchRes.json();
+      let body: any;
+
+      if (days === 7) {
+        // Use supabase.functions.invoke for the standard 7-day load — known to work reliably
+        const res = await supabase.functions.invoke("google-calendar-events", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.error) throw res.error;
+        body = res.data;
+      } else {
+        // For extended windows, use raw fetch with x-calendar-days header
+        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`;
+        const fetchRes = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            "x-calendar-days": String(days),
+          },
+          body: "{}",
+        });
+        if (!fetchRes.ok) throw new Error(`Calendar fetch failed: ${fetchRes.status}`);
+        body = await fetchRes.json();
+      }
 
       setConnected(body.connected);
       setCalendarEmail(body.email || null);
       if (body.events) setEvents(body.events);
     } catch (err: any) {
       console.error("Failed to fetch calendar:", err);
-      // Only mark disconnected on initial 7-day load — don't kill the UI on a 30-day expand failure
       if (days === 7) setConnected(false);
       else toast.error("Failed to load extended calendar: " + err.message);
     } finally {
