@@ -58,6 +58,10 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
   const [allMeetings, setAllMeetings] = useState<CalendarEvent[]>([]);
   const [meetingsLoading, setMeetingsLoading] = useState(false);
   const [showAllMeetings, setShowAllMeetings] = useState(false);
+  const [expandedModalDateGroups, setExpandedModalDateGroups] = useState<Set<string>>(new Set());
+  const toggleModalDateGroup = (label: string) => setExpandedModalDateGroups(prev => {
+    const next = new Set(prev); if (next.has(label)) next.delete(label); else next.add(label); return next;
+  });
   const [peopleRegistry, setPeopleRegistry] = useState<{ name: string; email: string }[]>([]);
   const matchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -185,7 +189,7 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
     setPriority("Med"); setDueDate(""); setDueTime(""); setIsMeetingContext(false);
     setEndDate(""); setEndTime(""); setAttendeeEmails(""); setEventTitle("");
     setAddMeetLink(true); setIsAllDay(false); setContext(""); setValidUntil("");
-    setLinkedMeetingId(""); setLinkedMeetingTitle(""); setShowAllMeetings(false);
+    setLinkedMeetingId(""); setLinkedMeetingTitle(""); setShowAllMeetings(false); setExpandedModalDateGroups(new Set());
   };
 
   const handleSave = async (toPending: boolean) => {
@@ -331,11 +335,29 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
 
   const formatEventDate = (start: string) => {
     try {
-      const d = parseISO(start);
+      // All-day events are date-only strings like "2026-04-23" — parse as local to avoid UTC shift
+      let d: Date;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+        const [y, m, day] = start.split("-").map(Number);
+        d = new Date(y, m - 1, day);
+      } else {
+        d = parseISO(start);
+      }
       if (isToday(d)) return "Today";
       if (isTomorrow(d)) return "Tomorrow";
       return format(d, "EEE, MMM d");
     } catch { return start; }
+  };
+
+  // Group meetings by date label for the "show all" section
+  const groupMeetingsByDate = (meetings: CalendarEvent[]) => {
+    const groups: Record<string, CalendarEvent[]> = {};
+    meetings.forEach(ev => {
+      const label = formatEventDate(ev.start);
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(ev);
+    });
+    return groups;
   };
 
   const formatEventTime = (start: string) => {
@@ -626,14 +648,33 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
                       >
                         {showAllMeetings
                           ? <><ChevronUp className="w-3 h-3" /> Hide all meetings</>
-                          : <><ChevronDown className="w-3 h-3" /> Show all meetings ({allMeetings.length})</>
+                          : <><ChevronDown className="w-3 h-3" /> All meetings ({otherMeetings.length} more)</>
                         }
                       </button>
                       {showAllMeetings && (
-                        <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto">
-                          {otherMeetings.map(ev => (
-                            <MeetingOption key={ev.id} ev={ev} />
-                          ))}
+                        <div className="space-y-1.5 pt-1 max-h-64 overflow-y-auto pr-1">
+                          {Object.entries(groupMeetingsByDate(otherMeetings)).map(([dateLabel, dayEvs]) => {
+                            const isOpen = expandedModalDateGroups.has(dateLabel);
+                            return (
+                              <div key={dateLabel} className="border border-border rounded-lg overflow-hidden">
+                                <button
+                                  onClick={() => toggleModalDateGroup(dateLabel)}
+                                  className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                                >
+                                  <span className="text-xs font-semibold">{dateLabel}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-muted-foreground">{dayEvs.length} meeting{dayEvs.length !== 1 ? "s" : ""}</span>
+                                    {isOpen ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+                                  </div>
+                                </button>
+                                {isOpen && (
+                                  <div className="p-2 space-y-1.5">
+                                    {dayEvs.map(ev => <MeetingOption key={ev.id} ev={ev} />)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </>
@@ -641,7 +682,7 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
 
                   {suggestedMeetings.length === 0 && !showAllMeetings && (
                     <p className="text-xs text-muted-foreground">
-                      No matches found. Fill in Person or Project to get suggestions, or{" "}
+                      No matches yet. Fill in Person or Project to get suggestions, or{" "}
                       <button
                         onClick={() => setShowAllMeetings(true)}
                         className="text-primary underline-offset-2 hover:underline"
