@@ -4,7 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 async function refreshTokenIfNeeded(supabase: any, tokenRow: any): Promise<string> {
@@ -59,9 +58,15 @@ serve(async (req) => {
       });
     }
 
-    // `days` is passed as a custom header — works reliably regardless of GET/POST
-    const daysHeader = req.headers.get("x-calendar-days");
-    const days = daysHeader ? Math.min(Math.max(Number(daysHeader) || 7, 1), 60) : 7;
+    // Read days from body — supabase.functions.invoke sends a clean JSON body
+    let days = 7;
+    try {
+      const text = await req.text();
+      if (text && text !== "{}") {
+        const parsed = JSON.parse(text);
+        if (parsed?.days) days = Math.min(Math.max(Number(parsed.days) || 7, 1), 60);
+      }
+    } catch { /* default to 7 */ }
 
     console.log("Fetching calendar, days:", days);
 
@@ -84,7 +89,7 @@ serve(async (req) => {
     const now = new Date();
     const later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
-    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString(), "days:", days);
+    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString());
 
     const calParams = new URLSearchParams({
       timeMin: now.toISOString(),
