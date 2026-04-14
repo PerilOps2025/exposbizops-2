@@ -4,16 +4,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 async function refreshTokenIfNeeded(supabase: any, tokenRow: any): Promise<string> {
   if (new Date(tokenRow.expires_at) > new Date(Date.now() + 60_000)) {
     return tokenRow.access_token;
   }
-
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID")!;
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -24,16 +23,13 @@ async function refreshTokenIfNeeded(supabase: any, tokenRow: any): Promise<strin
       grant_type: "refresh_token",
     }),
   });
-
   const data = await res.json();
   if (!res.ok) throw new Error("Token refresh failed: " + JSON.stringify(data));
-
   const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000).toISOString();
   await supabase.from("calendar_tokens").update({
     access_token: data.access_token,
     expires_at: expiresAt,
   }).eq("id", tokenRow.id);
-
   return data.access_token;
 }
 
@@ -63,22 +59,11 @@ serve(async (req) => {
       });
     }
 
-    // Read `days` — try query string first, then body, then default 7
-    let days = 7;
-    const url = new URL(req.url);
-    const daysParam = url.searchParams.get("days");
-    console.log("req.url:", req.url, "daysParam:", daysParam);
+    // `days` is passed as a custom header — works reliably regardless of GET/POST
+    const daysHeader = req.headers.get("x-calendar-days");
+    const days = daysHeader ? Math.min(Math.max(Number(daysHeader) || 7, 1), 60) : 7;
 
-    if (daysParam) {
-      days = Math.min(Math.max(Number(daysParam) || 7, 1), 60);
-    } else if (req.method === "POST") {
-      try {
-        const body = await req.json();
-        if (body?.days) days = Math.min(Math.max(Number(body.days) || 7, 1), 60);
-      } catch { /* no body */ }
-    }
-
-    console.log("Fetching calendar for days:", days);
+    console.log("Fetching calendar, days:", days);
 
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
@@ -99,7 +84,7 @@ serve(async (req) => {
     const now = new Date();
     const later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
-    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString());
+    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString(), "days:", days);
 
     const calParams = new URLSearchParams({
       timeMin: now.toISOString(),
@@ -122,7 +107,7 @@ serve(async (req) => {
     }
 
     const calData = await calRes.json();
-    console.log("Total events returned by Google:", calData.items?.length ?? 0);
+    console.log("Events returned:", calData.items?.length ?? 0, "for days:", days);
 
     const events = (calData.items || []).map((e: any) => ({
       id: e.id,
