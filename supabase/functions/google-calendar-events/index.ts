@@ -63,18 +63,12 @@ serve(async (req) => {
       });
     }
 
-    // Parse optional query params from body
-    let days = 7; // default for MeetingTab
-    if (req.method === "POST" || req.headers.get("content-type")?.includes("application/json")) {
-      try {
-        const body = await req.json();
-        if (body?.days) days = Math.min(Number(body.days) || 7, 60);
-      } catch { /* no body is fine */ }
-    } else {
-      const url = new URL(req.url);
-      const d = url.searchParams.get("days");
-      if (d) days = Math.min(Number(d) || 7, 60);
-    }
+    // Read `days` from POST body (default 7 for meeting tab, 30 for modal)
+    let days = 7;
+    try {
+      const body = await req.json();
+      if (body?.days) days = Math.min(Math.max(Number(body.days) || 7, 1), 60);
+    } catch { /* no body = use default */ }
 
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
@@ -129,7 +123,9 @@ serve(async (req) => {
       })),
       location: e.location || null,
       htmlLink: e.htmlLink,
-      meetLink: e.hangoutLink || e.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri || null,
+      meetLink: e.hangoutLink || e.conferenceData?.entryPoints?.find(
+        (ep: any) => ep.entryPointType === "video"
+      )?.uri || null,
     }));
 
     return new Response(JSON.stringify({
