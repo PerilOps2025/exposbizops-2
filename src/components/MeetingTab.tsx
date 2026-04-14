@@ -50,30 +50,13 @@ export default function MeetingTab() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      let body: any;
-
-      if (days === 7) {
-        // Use supabase.functions.invoke for the standard 7-day load — known to work reliably
-        const res = await supabase.functions.invoke("google-calendar-events", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.error) throw res.error;
-        body = res.data;
-      } else {
-        // For extended windows, use raw fetch with x-calendar-days header
-        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`;
-        const fetchRes = await fetch(fnUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-            "x-calendar-days": String(days),
-          },
-          body: "{}",
-        });
-        if (!fetchRes.ok) throw new Error(`Calendar fetch failed: ${fetchRes.status}`);
-        body = await fetchRes.json();
-      }
+      // supabase.functions.invoke handles CORS correctly for all cases
+      const res = await supabase.functions.invoke("google-calendar-events", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: { days },
+      });
+      if (res.error) throw res.error;
+      body = res.data;
 
       setConnected(body.connected);
       setCalendarEmail(body.email || null);
