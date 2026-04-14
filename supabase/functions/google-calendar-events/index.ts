@@ -63,12 +63,10 @@ serve(async (req) => {
       });
     }
 
-    // Read `days` from POST body (default 7 for meeting tab, 30 for modal)
-    let days = 7;
-    try {
-      const body = await req.json();
-      if (body?.days) days = Math.min(Math.max(Number(body.days) || 7, 1), 60);
-    } catch { /* no body = use default */ }
+    // Read `days` from query string — e.g. ?days=30
+    const url = new URL(req.url);
+    const daysParam = url.searchParams.get("days");
+    const days = daysParam ? Math.min(Math.max(Number(daysParam) || 7, 1), 60) : 7;
 
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
