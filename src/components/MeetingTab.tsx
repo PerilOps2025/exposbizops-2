@@ -219,14 +219,23 @@ export default function MeetingTab() {
   };
 
   const getDateLabel = (dateStr: string) => {
-    const d = parseISO(dateStr);
+    // All-day events have date-only strings like "2026-04-23" (no time/timezone).
+    // parseISO treats them as UTC midnight which shifts the day in IST (+5:30).
+    // Parse them manually as local dates to avoid the off-by-one.
+    let d: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [y, m, day] = dateStr.split("-").map(Number);
+      d = new Date(y, m - 1, day);
+    } else {
+      d = parseISO(dateStr);
+    }
     if (isToday(d)) return "Today";
     if (isTomorrow(d)) return "Tomorrow";
     return format(d, "EEEE, MMM d");
   };
 
   // Split events: within 7 days vs beyond
-  const cutoff7 = addDays(startOfDay(new Date()), 7);
+  const cutoff7 = addDays(startOfDay(new Date()), 8); // include full day 7
   const first7Events = events.filter(e => parseISO(e.start) < cutoff7);
   const beyondEvents = events.filter(e => parseISO(e.start) >= cutoff7);
 
