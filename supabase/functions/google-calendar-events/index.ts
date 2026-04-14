@@ -63,10 +63,22 @@ serve(async (req) => {
       });
     }
 
-    // Read `days` from query string — e.g. ?days=30
+    // Read `days` — try query string first, then body, then default 7
+    let days = 7;
     const url = new URL(req.url);
     const daysParam = url.searchParams.get("days");
-    const days = daysParam ? Math.min(Math.max(Number(daysParam) || 7, 1), 60) : 7;
+    console.log("req.url:", req.url, "daysParam:", daysParam);
+
+    if (daysParam) {
+      days = Math.min(Math.max(Number(daysParam) || 7, 1), 60);
+    } else if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        if (body?.days) days = Math.min(Math.max(Number(body.days) || 7, 1), 60);
+      } catch { /* no body */ }
+    }
+
+    console.log("Fetching calendar for days:", days);
 
     const { data: tokenRow } = await supabase
       .from("calendar_tokens")
@@ -86,6 +98,8 @@ serve(async (req) => {
 
     const now = new Date();
     const later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+    console.log("timeMin:", now.toISOString(), "timeMax:", later.toISOString());
 
     const calParams = new URLSearchParams({
       timeMin: now.toISOString(),
@@ -108,6 +122,8 @@ serve(async (req) => {
     }
 
     const calData = await calRes.json();
+    console.log("Total events returned by Google:", calData.items?.length ?? 0);
+
     const events = (calData.items || []).map((e: any) => ({
       id: e.id,
       title: e.summary || "No Title",
