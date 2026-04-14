@@ -50,13 +50,17 @@ export default function MeetingTab() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const res = await supabase.functions.invoke("google-calendar-events", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { days },
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`;
+      const fetchRes = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ days }),
       });
-
-      if (res.error) throw res.error;
-      const body = res.data;
+      if (!fetchRes.ok) throw new Error(`Calendar fetch failed: ${fetchRes.status}`);
+      const body = await fetchRes.json();
 
       setConnected(body.connected);
       setCalendarEmail(body.email || null);
