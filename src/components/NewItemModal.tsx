@@ -95,8 +95,12 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
       if (!session) return;
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events?days=30`;
       const fetchRes = await fetch(fnUrl, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ days: 30 }),
       });
       if (!fetchRes.ok) return;
       const resData = await fetchRes.json();
