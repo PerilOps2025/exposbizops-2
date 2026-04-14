@@ -93,12 +93,19 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const res = await supabase.functions.invoke("google-calendar-events", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { days: 30 },
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`;
+      const fetchRes = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ days: 30 }),
       });
-      if (res.error || !res.data?.events) return;
-      const events: CalendarEvent[] = res.data.events;
+      if (!fetchRes.ok) return;
+      const resData = await fetchRes.json();
+      if (!resData?.events) return;
+      const events: CalendarEvent[] = resData.events;
       setAllMeetings(events);
       computeSuggestions(events, peopleRegistry, person, projectTag);
     } catch (e) {
