@@ -1,25 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { X, Calendar, CheckCircle, ListTodo, ArrowRight, Video, Link2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Calendar, CheckCircle, ListTodo, ArrowRight, Video, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { generateId, getPriorityEmoji } from "@/lib/supabase-helpers";
-import { format, parseISO, isToday, isTomorrow } from "date-fns";
 
 type ItemType = "Task" | "Decision" | "Event" | "FollowUp";
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  attendees: { email: string; name: string }[];
-}
 
 interface NewItemModalProps {
   open: boolean;
@@ -51,128 +41,21 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
   const [validUntil, setValidUntil] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Meeting linking state
+  // Meeting linking
   const [linkedMeetingId, setLinkedMeetingId] = useState("");
-  const [linkedMeetingTitle, setLinkedMeetingTitle] = useState("");
-  const [suggestedMeetings, setSuggestedMeetings] = useState<CalendarEvent[]>([]);
-  const [allMeetings, setAllMeetings] = useState<CalendarEvent[]>([]);
-  const [meetingsLoading, setMeetingsLoading] = useState(false);
-  const [showAllMeetings, setShowAllMeetings] = useState(false);
-  const [expandedModalDateGroups, setExpandedModalDateGroups] = useState<Set<string>>(new Set());
-  const toggleModalDateGroup = (label: string) => setExpandedModalDateGroups(prev => {
-    const next = new Set(prev); if (next.has(label)) next.delete(label); else next.add(label); return next;
-  });
-  const [peopleRegistry, setPeopleRegistry] = useState<{ name: string; email: string }[]>([]);
-  const matchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
 
-  // Load calendar events + people registry when modal opens
   useEffect(() => {
-    if (!open) return;
-    loadCalendarEvents();
-    loadPeopleRegistry();
+    if (open) loadUpcomingMeetings();
   }, [open]);
 
-  // Re-run smart matching whenever person or projectTag changes (debounced)
-  useEffect(() => {
-    if (matchTimerRef.current) clearTimeout(matchTimerRef.current);
-    matchTimerRef.current = setTimeout(() => {
-      computeSuggestions(allMeetings, peopleRegistry, person, projectTag);
-    }, 300);
-  }, [person, projectTag, allMeetings, peopleRegistry]);
-
-  const loadPeopleRegistry = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  const loadUpcomingMeetings = async () => {
     const { data } = await supabase
-      .from("config")
-      .select("value")
-      .eq("user_id", user.id)
-      .eq("key", "ENTITY_PEOPLE")
-      .single();
-    if (data?.value) setPeopleRegistry(data.value as { name: string; email: string }[]);
-  };
-
-  const loadCalendarEvents = async () => {
-    setMeetingsLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const res = await supabase.functions.invoke("google-calendar-events", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { days: 30 },
-      });
-      if (res.error || !res.data?.events) return;
-      const events: CalendarEvent[] = res.data.events;
-      setAllMeetings(events);
-      computeSuggestions(events, peopleRegistry, person, projectTag);
-    } catch (e) {
-      console.error("Failed to load calendar events:", e);
-    } finally {
-      setMeetingsLoading(false);
-    }
-  };
-
-  // Core matching logic
-  // - person field → look up in registry → get email → match against attendees
-  // - projectTag → keyword match against event title
-  const computeSuggestions = (
-    events: CalendarEvent[],
-    registry: { name: string; email: string }[],
-    personField: string,
-    projectField: string
-  ) => {
-    if (events.length === 0) return;
-
-    // Resolve person names to emails via registry
-    const personNames = personField.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-    const resolvedEmails = new Set<string>();
-    for (const pName of personNames) {
-      for (const reg of registry) {
-        if (
-          reg.name.toLowerCase().includes(pName) ||
-          pName.includes(reg.name.toLowerCase()) ||
-          reg.email.toLowerCase().includes(pName)
-        ) {
-          resolvedEmails.add(reg.email.toLowerCase());
-        }
-      }
-      // Also treat it as a direct email if it contains @
-      if (pName.includes("@")) resolvedEmails.add(pName);
-    }
-
-    // Project keywords
-    const stopWords = new Set(["with","this","that","from","have","will","been","your","their","about","meeting","call","sync","chat","review","discussion","weekly","daily"]);
-    const projectKeywords = projectField
-      .toLowerCase()
-      .split(/[\s\-_/]+/)
-      .filter(w => w.length > 2 && !stopWords.has(w));
-
-    const scored = events.map(ev => {
-      let score = 0;
-
-      // Attendee email match (strong signal)
-      if (resolvedEmails.size > 0) {
-        const evEmails = ev.attendees.map(a => a.email.toLowerCase());
-        const matched = [...resolvedEmails].filter(e => evEmails.includes(e)).length;
-        score += matched * 3;
-      }
-
-      // Project/title keyword match
-      if (projectKeywords.length > 0) {
-        const titleLower = ev.title.toLowerCase();
-        const kwMatches = projectKeywords.filter(k => titleLower.includes(k)).length;
-        score += kwMatches * 2;
-      }
-
-      return { ev, score };
-    });
-
-    const suggested = scored
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(({ ev }) => ev);
-
-    setSuggestedMeetings(suggested);
+      .from("meeting_log")
+      .select("meeting_id, meeting_title, scheduled_start")
+      .order("scheduled_start", { ascending: true })
+      .limit(20);
+    setUpcomingMeetings(data || []);
   };
 
   if (!open) return null;
@@ -182,7 +65,7 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
     setPriority("Med"); setDueDate(""); setDueTime(""); setIsMeetingContext(false);
     setEndDate(""); setEndTime(""); setAttendeeEmails(""); setEventTitle("");
     setAddMeetLink(true); setIsAllDay(false); setContext(""); setValidUntil("");
-    setLinkedMeetingId(""); setLinkedMeetingTitle(""); setShowAllMeetings(false); setExpandedModalDateGroups(new Set());
+    setLinkedMeetingId("");
   };
 
   const handleSave = async (toPending: boolean) => {
@@ -326,64 +209,12 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
     return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
   };
 
-  const formatEventDate = (start: string) => {
-    try {
-      // All-day events are date-only strings like "2026-04-23" — parse as local to avoid UTC shift
-      let d: Date;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
-        const [y, m, day] = start.split("-").map(Number);
-        d = new Date(y, m - 1, day);
-      } else {
-        d = parseISO(start);
-      }
-      if (isToday(d)) return "Today";
-      if (isTomorrow(d)) return "Tomorrow";
-      return format(d, "EEE, MMM d");
-    } catch { return start; }
-  };
 
-  // Group meetings by date label for the "show all" section
-  const groupMeetingsByDate = (meetings: CalendarEvent[]) => {
-    const groups: Record<string, CalendarEvent[]> = {};
-    meetings.forEach(ev => {
-      const label = formatEventDate(ev.start);
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(ev);
-    });
-    return groups;
-  };
 
-  const formatEventTime = (start: string) => {
-    try { return format(parseISO(start), "h:mm a"); }
-    catch { return ""; }
-  };
 
-  // Meetings not in suggested list
-  const otherMeetings = allMeetings.filter(e => !suggestedMeetings.find(s => s.id === e.id));
 
-  const MeetingOption = ({ ev }: { ev: CalendarEvent }) => {
-    const isSelected = linkedMeetingId === ev.id;
-    return (
-      <button
-        onClick={() => {
-          if (isSelected) { setLinkedMeetingId(""); setLinkedMeetingTitle(""); }
-          else { setLinkedMeetingId(ev.id); setLinkedMeetingTitle(ev.title); }
-        }}
-        className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
-          isSelected
-            ? "border-primary bg-primary/5 text-primary"
-            : "border-border hover:border-primary/40 hover:bg-muted/50"
-        }`}
-      >
-        <div className="font-medium truncate">{ev.title}</div>
-        <div className="text-muted-foreground mt-0.5">
-          {formatEventDate(ev.start)} · {formatEventTime(ev.start)}
-        </div>
-      </button>
-    );
-  };
 
-  const showMeetingLinker = type !== "Decision";
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -587,105 +418,28 @@ export default function NewItemModal({ open, onClose, onCreated, defaultType = "
             </div>
           )}
 
-          {/* ── Meeting linker ── */}
-          {showMeetingLinker && (
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                <Link2 className="w-3 h-3" />
-                Link to Meeting
-                {linkedMeetingId && (
-                  <Badge variant="secondary" className="text-[10px] h-4 ml-1">linked</Badge>
-                )}
+          {/* Meeting linking - for Task, FollowUp, Event */}
+          {type !== "Decision" && (
+            <div>
+              <label className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                <Link2 className="w-3 h-3" /> Link to Meeting (optional)
               </label>
-
-              {/* Selected meeting pill */}
-              {linkedMeetingId && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg">
-                  <Calendar className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                  <span className="text-xs font-medium text-primary flex-1 truncate">{linkedMeetingTitle}</span>
-                  <button
-                    onClick={() => { setLinkedMeetingId(""); setLinkedMeetingTitle(""); }}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {meetingsLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading meetings…
-                </div>
-              ) : allMeetings.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-1">
-                  No upcoming meetings found. Connect Google Calendar in the Meetings tab.
-                </p>
-              ) : (
-                <div className="space-y-1.5">
-                  {suggestedMeetings.length > 0 && (
-                    <>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">
-                        Suggested · matched on {person ? "person" : ""}{person && projectTag ? " & " : ""}{projectTag ? "project" : ""}
-                      </p>
-                      {suggestedMeetings.slice(0, 3).map(ev => (
-                        <MeetingOption key={ev.id} ev={ev} />
-                      ))}
-                    </>
+              <Select value={linkedMeetingId || "__none__"} onValueChange={v => setLinkedMeetingId(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="No meeting linked" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No meeting linked</SelectItem>
+                  {upcomingMeetings.map(m => (
+                    <SelectItem key={m.meeting_id} value={m.meeting_id}>
+                      {m.meeting_title || m.meeting_id}
+                    </SelectItem>
+                  ))}
+                  {upcomingMeetings.length === 0 && (
+                    <div className="py-2 px-3 text-xs text-muted-foreground">No meetings in log yet</div>
                   )}
-
-                  {otherMeetings.length > 0 && (
-                    <>
-                      <button
-                        onClick={() => setShowAllMeetings(v => !v)}
-                        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mt-1"
-                      >
-                        {showAllMeetings
-                          ? <><ChevronUp className="w-3 h-3" /> Hide all meetings</>
-                          : <><ChevronDown className="w-3 h-3" /> All meetings ({otherMeetings.length} more)</>
-                        }
-                      </button>
-                      {showAllMeetings && (
-                        <div className="space-y-1.5 pt-1 max-h-64 overflow-y-auto pr-1">
-                          {Object.entries(groupMeetingsByDate(otherMeetings)).map(([dateLabel, dayEvs]) => {
-                            const isOpen = expandedModalDateGroups.has(dateLabel);
-                            return (
-                              <div key={dateLabel} className="border border-border rounded-lg overflow-hidden">
-                                <button
-                                  onClick={() => toggleModalDateGroup(dateLabel)}
-                                  className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-                                >
-                                  <span className="text-xs font-semibold">{dateLabel}</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] text-muted-foreground">{dayEvs.length} meeting{dayEvs.length !== 1 ? "s" : ""}</span>
-                                    {isOpen ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
-                                  </div>
-                                </button>
-                                {isOpen && (
-                                  <div className="p-2 space-y-1.5">
-                                    {dayEvs.map(ev => <MeetingOption key={ev.id} ev={ev} />)}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {suggestedMeetings.length === 0 && !showAllMeetings && (
-                    <p className="text-xs text-muted-foreground">
-                      No matches yet. Fill in Person or Project to get suggestions, or{" "}
-                      <button
-                        onClick={() => setShowAllMeetings(true)}
-                        className="text-primary underline-offset-2 hover:underline"
-                      >
-                        browse all {allMeetings.length} meetings
-                      </button>.
-                    </p>
-                  )}
-                </div>
-              )}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>
